@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no">
+
+	<meta name="apple-mobile-web-app-capable" content="yes">
+	<meta name="mobile-web-app-capable" content="yes">
+
+	<title>FlappyJS</title>
+
+	<script src="sprite.js"></script>
+
+	<style>
+	canvas {
+		display: block;
+		position: absolute;
+		margin: auto;
+		top: 0;
+		bottom: 0;
+		left: 0;
+		right: 0;
+	}
+	</style>
+</head>
+<body>
+<script>
+
+var canvas, ctx, width, height, fgPos = 0;
+var frames = 0, score = 0, best = 0;
+
+var currentstate,
+states = {
+	Splash: 0, Game: 1, Score: 2
+};
+
+var bird = {
+	
+	x: 60,
+	y: 0,
+	frame: 0,
+	velocity: 0,
+	animation: [0,1,2,1],
+	rotation: 0,
+	radius: 12,
+	gravity: 0.25,
+	_jump: 4.6,
+	
+	jump: function()
+	{
+		this.velocity = -this._jump;
+	},
+	
+	update: function(){
+		//Set n to be 10 if you are in the splash screen, 5 if you are not.
+		//This will essential make him flap quicker in game then on the splash screen.
+		var n = currentstate === states.Splash ? 10 : 5;
+		this.frame += frames % n === 0 ? 1 : 0;
+		this.frame %= this.animation.length;
+		
+		//If you are in the splash screen
+		if(currentstate === states.Splash)
+		{
+			//This will cause the bird to move up and down in a wave
+			this.y = height - 280 + 5*Math.cos(frames/10);
+			this.rotation = 0;
+		} //If you're not in the splash screen
+		else {
+			//Add gravity to velocity, and then velocity to y position
+			this.velocity += this.gravity;
+			this.y += this.velocity;
+			
+			//If this if hitting the floor set state to score
+			if(this.y >= height - s_fg.height - 10){
+				this.y = height - s_fg.height-10;
+				if(currentstate === states.Game){
+					currentstate = states.Score;
+				}
+				this.velocity = this._jump;
+			}
+			
+			//If your going faster then the jump velocity
+			if(this.velocity >= this._jump){
+				//Set the animation frame to be the first frame
+				this.frame = 1;
+				//Set the rotation to be the minimun of the two parameters
+				this.rotation = Math.min(Math.PI/2, this.rotation + 0.3);
+			} else //If your moving up quick enough set the rotation to be
+			{      //facing up.
+				this.rotation = -0.3;	
+			}
+		}
+	},
+	
+	draw: function(ctx)
+	{
+		ctx.save();
+		ctx.translate(this.x, this.y);
+		ctx.rotate(this.rotation);
+		
+		//Draw the bounding sphere
+		ctx.beginPath();
+		ctx.arc(0,0,this.radius, 0, 2*Math.PI);
+		ctx.stroke();
+		
+		var n = this.animation[this.frame];
+		s_bird[n].draw(ctx, -s_bird[n].width/2, -s_bird[n].height/2);
+		ctx.restore();
+	}
+},
+
+pipes = {
+	_pipes: [],
+	
+	reset: function()
+	{
+		this._pipes = [];
+	},
+	
+	update: function()
+	{
+		//Every 100 frames do this
+		if(frames % 100 === 0)
+		{
+			//The height of the pipe should be random
+			var _y = height - (s_pipeSouth.height + s_fg.height +120 + 200 * Math.random());
+			//Push a new pipe into the array
+			this._pipes.push({
+				x: 500,
+				y: _y,
+				width: s_pipeSouth.width,
+				height: s_pipeSouth.height
+			});
+		}
+		for(var i = 0, len = this._pipes.length; i < len; i++){
+			var p = this._pipes[i];
+			
+			//If it is the front most pipe
+			if(i === 0)
+			{
+				//Close X Position
+				var cx = Math.min(Math.max(bird.x, p.x), p.x+p.width);
+				// South Facing Pipe
+				var cy1 = Math.min(Math.max(bird.y, p.y), p.y+p.height);
+				//North facing pipe
+				var cy2 = Math.min(Math.max(bird.y, p.y + p.height + 80), p.y + 2* p.height + 80);
+				
+				// Differences between the positions of the edges and the bird
+				var dx = bird.x - cx;
+				var dy1 = bird.y - cy1;
+				var dy2 = bird.y - cy2;
+				
+				//Distances away from the pipes edges
+				var d1 = dx*dx + dy1*dy1;
+				var d2 = dx*dx + dy2*dy2;
+				
+				var r = bird.radius * bird.radius;
+				
+				//If you hit the edges, set state to score state
+				if(r > d1 || r > d2){
+					currentstate = states.Score;
+				}
+			}
+			
+			p.x -= 2;
+			if(p.x < -50){
+				this._pipes.splice(i, 1);
+				i--;
+				len--;
+			}
+		}
+	},
+	
+	draw: function(ctx)
+	{
+		for(var i = 0, len = this._pipes.length; i < len; i++){
+			var p = this._pipes[i];
+			s_pipeSouth.draw(ctx, p.x, p.y);
+			s_pipeNorth.draw(ctx, p.x, p.y+80+p.height);
+		}
+	}	
+};
+
+function onPress(evt)
+{
+	switch(currentstate){
+		case states.Splash:
+			currentstate = states.Game;
+			bird.jump();
+			break;
+		case states.Game:
+			bird.jump();
+			break;
+		case states.Score:
+			break;
+	}
+}
+
+function main(){
+	canvas = document.createElement("canvas");
+	
+	width = window.innerWidth;
+	height = window.innerHeight;
+
+	var evt = "touchstart";
+
+	//If we are inside a desktop enviroment the width will most likely be bigger
+	// then 500
+	if(width >= 500){
+		width = 320;
+		height = 480;
+		canvas.style.border = "1px solid #000";
+		evt = "mousedown";
+	}
+	document.addEventListener(evt, onPress);
+	
+	canvas.width = width;
+	canvas.height = height;
+	ctx = canvas.getContext("2d");
+	
+	currentstate = states.Splash;
+	
+	document.body.appendChild(canvas);
+	
+	var img = new Image();
+	img.onload = function(){
+		initSprites(this);
+		ctx.fillStyle = s_bg.color;
+		run();
+	}
+	
+	img.src = "res/sheet.png";
+}
+
+function run(){
+	var loop = function(){
+		update();
+		render();
+		window.requestAnimationFrame(loop, canvas);
+	}
+	window.requestAnimationFrame(loop, canvas);
+}
+
+function update()
+{
+	frames++;
+	//Causes the forground sprite to move if your not at the score screen.
+	if(currentstate !== states.Score){
+		fgPos = (fgPos - 2) % 14;
+	}
+	
+	if(currentstate === states.Game){
+		pipes.update();
+	}
+		
+	bird.update();
+	
+}
+
+function render(){
+	ctx.fillRect(0,0,width, height);
+	s_bg.draw(ctx, 0, height - s_bg.height);
+	s_bg.draw(ctx, s_bg.width, height - s_bg.height);
+	
+	
+	bird.draw(ctx);
+	pipes.draw(ctx);
+	
+	s_fg.draw(ctx, fgPos, height - s_fg.height);
+	s_fg.draw(ctx, fgPos + s_fg.width, height - s_fg.height);
+	
+	var width2 = width/2;
+	
+	if(currentstate === states.Splash)
+	{
+		s_splash.draw(ctx, width2 - s_splash.width/2, height - 300);
+		s_text.GetReady.draw(ctx, width2 - s_text.GetReady.width/2, height - 380);
+	}
+}
+
+main();
+
+</script>
+</body>
+</html>
